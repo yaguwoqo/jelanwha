@@ -408,3 +408,10 @@
 .st-bg:hover{border-color:rgb(var(--lilac-rgb) / .55)}
 .st-bg.on{border-color:var(--lilac);background:rgb(var(--lilac-rgb) / .12)}
 @media(max-width:440px){.st-bgs{grid-template-columns:1fr}.acct-avatar.st-avatar{width:72px;height:72px;font-size:30px}}
+
+/* ===== Jenis komik (manhwa/manhua/manga), poster, tab ===== */
+.type-badge{position:absolute;top:6px;left:6px;z-index:2;padding:3px 6px;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:#fff;background:hsl(calc(var(--h) - 6) calc(15.8% * var(--s)) calc(7.5% * var(--l)) / .82);border:1px solid #ffffff22;backdrop-filter:blur(6px)}
+.type-badge.manhwa{color:var(--lilac)}
+.type-badge.manhua{color:#ffb86b}
+.type-badge.manga{color:#ff8fb1}
+.card-time{margin-top:2px;opacity:.8}

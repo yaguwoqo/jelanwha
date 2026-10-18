@@ -1,11 +1,11 @@
 import { createPortal } from 'react-dom'
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Routes, Route, Link, NavLink, useNavigate, useParams, useLocation, useSearchParams } from 'react-router-dom'
-import { Search, Home, Compass, Bookmark, History, BookOpen, ChevronRight, Star, ArrowLeft, ArrowUpDown, Heart, Menu, X, AlertCircle, RefreshCw, ChevronLeft, ArrowUp, List, Check, CheckCheck, Trash2, Play, Tags, ChevronDown, MessageCircle, Mail, Megaphone } from 'lucide-react'
+import { Search, Home, Compass, Bookmark, History, BookOpen, ChevronRight, Star, ArrowLeft, ArrowUpDown, Heart, Menu, X, AlertCircle, RefreshCw, ChevronLeft, ArrowUp, List, Check, CheckCheck, Trash2, Play, Tags, ChevronDown, MessageCircle, Mail, Megaphone, Clock } from 'lucide-react'
 import { useAccount } from './auth'
 import { AuthModal, AccountMenu, GuestPrompt, GuestStrip } from './components/Auth'
 import { SettingsModal } from './components/Settings'
-import { getList, getTop, getGenres, getManga, getChapter, normalizeManga } from './api'
+import { getList, getTop, getHome, getGenres, getManga, getChapter, normalizeManga, KINDS, KIND_LABEL } from './api'
 import Dropdown from './components/Dropdown'
 import Pagination from './components/Pagination'
 import Comments from './components/Comments'
@@ -70,8 +70,8 @@ function MangaCard({ item }) {
   const m = normalizeManga(item)
   const saved = isSaved(m.id)
   return <article className="manga-card">
-    <Link to={`/manga/${m.id}`} className="cover-link"><Cover manga={m} /><span className="cover-rating"><Star size={12} fill="currentColor" /> {m.rating ? m.rating.toFixed(1) : '—'}</span></Link>
-    <div className="card-copy"><Link to={`/manga/${m.id}`} className="card-title">{m.title}</Link><div className="card-meta">{m.latest ? `Chapter ${m.latest}` : 'Lihat detail'}</div></div>
+    <Link to={`/manga/${m.id}`} className="cover-link"><Cover manga={m} />{m.kind && <span className={`type-badge ${m.kind}`}>{KIND_LABEL[m.kind]}</span>}<span className="cover-rating"><Star size={12} fill="currentColor" /> {m.rating ? m.rating.toFixed(1) : '—'}</span></Link>
+    <div className="card-copy"><Link to={`/manga/${m.id}`} className="card-title">{m.title}</Link><div className="card-meta">{m.latest ? `Chapter ${m.latest}` : 'Lihat detail'}</div>{m.updatedAt > 0 && <div className="card-meta card-time">{timeAgo(m.updatedAt)}</div>}</div>
     <button className={`bookmark-mini ${saved ? 'active' : ''}`} aria-label={saved ? 'Hapus bookmark' : 'Bookmark'} onClick={() => toggleBookmark(item)}><Heart size={16} fill={saved ? 'currentColor' : 'none'} /></button>
   </article>
 }
@@ -134,8 +134,9 @@ function App() {
   return <Lib.Provider value={lib}><AuthCtx.Provider value={authValue}><div className={`app-shell ${isReader ? 'is-reader' : ''}`}>
     {!isReader && <header className="topbar">
       <Link to="/" className="brand"><span className="brand-mark">J</span><span>Jelan<span className="brand-accent">Wha</span></span></Link>
-      <nav className="desktop-nav">{nav.map(n => <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `nav-link ${isActive ? 'selected' : ''}`}><n.icon size={17} />{n.label}</NavLink>)}</nav>
-      <Link to="/explore" className="header-search"><Search size={17} /><span>Cari manhwa...</span></Link>
+      <nav className="desktop-nav">{nav.map(n => <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `nav-link ${isActive ? 'selected' : ''}`}><n.icon size={17} />{n.label}</NavLink>)}
+      </nav>
+      <Link to="/explore" className="header-search"><Search size={17} /><span>Cari komik...</span></Link>
       <AccountMenu user={account.user} ready={account.ready} synced={account.synced} openAuth={account.openAuth} openSettings={setSettings} logout={account.logout} waLink={WA_CHANNEL} mailLink={reportMail()} closeSignal={location.pathname} />
     </header>}
     <main className={`main-content ${isReader ? 'reader-mode' : ''}`}><Routes>
@@ -227,9 +228,9 @@ function Banner({ items }) {
     }
   }
   if (!count) {
-    return <section className="banner banner-fallback"><div className="banner-copy"><span className="eyebrow"><span className="pulse-dot" /> RUANG BACA KAMU</span><h1>Cerita bagus,<br /><em>mood bagus.</em></h1><p>Temukan dunia baru lewat cerita yang kamu suka.</p><Link to="/explore" className="primary-button">Jelajahi manhwa <ChevronRight size={17} /></Link></div></section>
+    return <section className="banner banner-fallback"><div className="banner-copy"><span className="eyebrow"><span className="pulse-dot" /> RUANG BACA KAMU</span><h1>Cerita bagus,<br /><em>mood bagus.</em></h1><p>Temukan dunia baru lewat cerita yang kamu suka.</p><Link to="/explore" className="primary-button">Jelajahi komik <ChevronRight size={17} /></Link></div></section>
   }
-  return <section className="banner" aria-roledescription="carousel" aria-label="Manhwa pilihan"
+  return <section className="banner" aria-roledescription="carousel" aria-label="Update terbaru"
     onMouseEnter={() => { paused.current = true }} onMouseLeave={() => { paused.current = false; endDrag() }}
     onTouchStart={() => { paused.current = true; stopAnim() }} onTouchEnd={() => { setTimeout(() => { paused.current = false }, 4000) }}>
     <div ref={trackRef} className={`banner-track ${dragging ? 'dragging' : ''}`} onScroll={onScroll}
@@ -241,11 +242,12 @@ function Banner({ items }) {
         {m.cover && <img className="banner-art" src={m.cover} alt={`Cover ${m.title}`} draggable="false" loading={i === 0 ? 'eager' : 'lazy'} />}
         <div className="banner-shade" />
         <div className="banner-copy">
-          <span className="eyebrow"><span className="pulse-dot" /> {i === 0 ? 'PALING POPULER' : `POPULER #${i + 1}`}</span>
+          <span className="eyebrow"><span className="pulse-dot" /> {m.kind ? `${KIND_LABEL[m.kind].toUpperCase()} • ` : ''}{i === 0 ? 'UPDATE TERBARU' : (m.ongoing ? 'ONGOING' : 'TERBARU')}</span>
           <h2 className="banner-title"><Link to={`/manga/${m.id}`} draggable="false">{m.title}</Link></h2>
           <div className="banner-meta">
             <span><Star size={13} fill="currentColor" /> {m.rating ? m.rating.toFixed(1) : '—'}</span>
             {m.latest && <span><BookOpen size={13} /> Chapter {m.latest}</span>}
+            {m.updatedAt > 0 && <span><Clock size={13} /> {timeAgo(m.updatedAt)}</span>}
             {m.genres.slice(0, 3).map(g => <span key={g} className="genre-chip">{g}</span>)}
           </div>
           {m.description && <p className="banner-desc">{m.description}</p>}
@@ -282,8 +284,7 @@ function Shelf({ children }) {
 /* ---------- Home ---------- */
 const GRID_SIZE = 18
 function HomePage() {
-  const [popular, setPopular] = useState([])
-  const [latest, setLatest] = useState([])
+  const [home, setHome] = useState(null)
   const [more, setMore] = useState([])
   const [morePage, setMorePage] = useState(1)
   const [moreNext, setMoreNext] = useState(true)
@@ -292,11 +293,10 @@ function HomePage() {
   const [error, setError] = useState('')
   const load = async () => {
     setLoading(true); setError('')
-    const [a, b, c] = await Promise.allSettled([getTop({ pageSize: 12 }), getList({ sort: 'latest', pageSize: 18 }), getList({ sort: 'latest', page: 2, pageSize: GRID_SIZE })])
-    if (a.status === 'fulfilled') setPopular(a.value.items)
-    if (b.status === 'fulfilled') setLatest(b.value.items)
-    if (c.status === 'fulfilled') { setMore(uniqueBy(c.value.items)); setMorePage(2); setMoreNext(c.value.hasNext) } else setMoreNext(false)
-    if (a.status === 'rejected' && b.status === 'rejected') setError(b.reason?.message || a.reason?.message || 'Gagal memuat')
+    const [a, b] = await Promise.allSettled([getHome(), getList({ sort: 'latest', page: 2, pageSize: GRID_SIZE })])
+    if (a.status === 'fulfilled') setHome(a.value)
+    if (b.status === 'fulfilled') { setMore(uniqueBy(b.value.items)); setMorePage(2); setMoreNext(b.value.hasNext) } else setMoreNext(false)
+    if (a.status === 'rejected') setError(a.reason?.message || 'Gagal memuat')
     setLoading(false)
   }
   useEffect(() => { load() }, [])
@@ -308,21 +308,22 @@ function HomePage() {
       setMore(prev => uniqueBy([...prev, ...r.items])); setMorePage(morePage + 1); setMoreNext(r.hasNext && r.items.length > 0)
     } catch (e) { setError(e.message) } finally { setLoadingMore(false) }
   }
-  const bannerItems = (popular.length ? popular : latest).slice(0, 6)
+  const popular = home?.popular || []
+  const latest = home?.latest?.manhwa || []
   const known = new Set(latest.map(idOf))
   const moreShown = more.filter(m => !known.has(idOf(m)))
   const { user, ready, openAuth } = useAuth()
   return <div className="page-stack">
     {ready && !user && <GuestStrip openAuth={openAuth} />}
-    {loading ? <div className="banner banner-skeleton shimmer" /> : <Banner items={bannerItems} />}
+    {loading ? <div className="banner banner-skeleton shimmer" /> : <Banner items={home?.banner || []} />}
     {error && <ErrorNotice error={error} retry={load} />}
     <section><SectionHeading title="Lagi populer" subtitle="Geser untuk lihat lebih banyak" to="/explore?sort=popular" />
-      {loading ? <Skeletons count={8} shelf /> : popular.length ? <Shelf>{popular.map((m, i) => <div className="shelf-item" key={idOf(m) || i}><MangaCard item={m} /></div>)}</Shelf> : !error && <Empty title="Belum ada katalog" detail="API belum mengembalikan daftar manhwa." />}
+      {loading ? <Skeletons count={8} shelf /> : popular.length ? <Shelf>{popular.map((m, i) => <div className="shelf-item" key={idOf(m) || i}><MangaCard item={m} /></div>)}</Shelf> : !error && <Empty title="Belum ada katalog" detail="API belum mengembalikan daftar komik." />}
     </section>
-    <section><SectionHeading title="Update terbaru" subtitle="Chapter yang baru ditambahkan" to="/explore" />
+    <section><SectionHeading title="Manhwa terbaru" subtitle="Chapter yang baru ditambahkan" to="/explore?type=manhwa" />
       {loading ? <Skeletons count={8} shelf /> : latest.length ? <Shelf>{latest.map((m, i) => <div className="shelf-item" key={idOf(m) || i}><MangaCard item={m} /></div>)}</Shelf> : !error && <Empty title="Belum ada update" detail="Coba lagi nanti." />}
     </section>
-    {!loading && moreShown.length > 0 && <section><SectionHeading title="Semua manhwa" subtitle="Terus temukan bacaan baru" to="/explore" link="Buka Explore" />
+    {!loading && moreShown.length > 0 && <section><SectionHeading title="Semua update" subtitle="Terus temukan bacaan baru" to="/explore" link="Buka Explore" />
       <div className="manga-grid">{moreShown.map((m, i) => <MangaCard key={idOf(m) || i} item={m} />)}</div>
       {moreNext && <div className="load-more"><button className="outline-button" onClick={loadMore} disabled={loadingMore}>{loadingMore ? <><RefreshCw size={15} className="spin" /> Memuat…</> : <>Muat lebih banyak <ChevronDown size={16} /></>}</button></div>}
     </section>}
@@ -338,10 +339,12 @@ const SORTS = [
   { value: 'rating', label: 'Rating tertinggi' },
   { value: 'title', label: 'Judul A–Z' }
 ]
+const FORMAT_OPTIONS = [{ value: '', label: 'Semua format' }, ...KINDS.map(k => ({ value: k, label: KIND_LABEL[k] }))]
 const PAGE_SIZE = 24
 function ExplorePage() {
   const [sp, setSp] = useSearchParams()
   const q = sp.get('q') || '', genre = sp.get('genre') || '', sort = sp.get('sort') || 'latest'
+  const type = KINDS.includes(sp.get('type')) ? sp.get('type') : ''
   const page = Math.max(1, parseInt(sp.get('page'), 10) || 1)
   const [input, setInput] = useState(q)
   const [genres, setGenres] = useState(FALLBACK_GENRES)
@@ -369,13 +372,13 @@ function ExplorePage() {
     const my = ++reqId.current
     setLoading(true); setError('')
     const serverSort = sort === 'popular' ? 'popular' : 'latest'
-    const job = sort === 'popular' && !q && !genre
+    const job = !type && sort === 'popular' && !q && !genre
       ? getTop({ page, pageSize: PAGE_SIZE })
-      : getList({ q, genre: genreObj?.id || '', sort: q ? '' : serverSort, page, pageSize: PAGE_SIZE })
+      : getList({ q, genre: genreObj?.id || '', type, sort: type ? sort : (q ? '' : serverSort), page, pageSize: PAGE_SIZE })
     job.then(r => { if (my === reqId.current) setRes(r) })
       .catch(e => { if (my === reqId.current) { setError(e.message); setRes({ items: [], totalPage: 0, totalRecord: 0, hasNext: false }) } })
       .finally(() => { if (my === reqId.current) setLoading(false) })
-  }, [q, genre, sort, page, genresReady, retry])
+  }, [q, genre, type, sort, page, genresReady, retry])
 
   const items = useMemo(() => {
     let list = res.items
@@ -387,11 +390,12 @@ function ExplorePage() {
 
   const genreOptions = useMemo(() => [{ value: '', label: 'Semua genre' }, ...genres.map(g => ({ value: g.name, label: g.name }))], [genres])
   const changePage = n => { setParams({ page: n }, true); topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
-  const hasFilter = q || genre || sort !== 'latest'
+  const hasFilter = q || genre || type || sort !== 'latest'
   return <div className="page-stack"><div className="page-intro"><span className="eyebrow">KATALOG</span><h1>Jelajahi cerita</h1><p>Cari judul, pilih genre, lalu mulai petualangan baru.</p></div>
-    <div className="explore-search" ref={topRef}><Search size={19} /><input value={input} onChange={e => setInput(e.target.value)} placeholder="Cari judul manhwa..." aria-label="Cari judul manhwa" />{input && <button onClick={() => { setInput(''); setParams({ q: '' }) }} aria-label="Hapus pencarian"><X size={17} /></button>}</div>
+    <div className="explore-search" ref={topRef}><Search size={19} /><input value={input} onChange={e => setInput(e.target.value)} placeholder="Cari judul komik..." aria-label="Cari judul komik" />{input && <button onClick={() => { setInput(''); setParams({ q: '' }) }} aria-label="Hapus pencarian"><X size={17} /></button>}</div>
     <div className="filters">
       <Dropdown label="Genre" icon={Tags} value={genre} options={genreOptions} searchable onChange={v => setParams({ genre: v })} />
+      <Dropdown label="Format" icon={BookOpen} value={type} options={FORMAT_OPTIONS} onChange={v => setParams({ type: v })} />
       <Dropdown label="Urutkan" icon={ArrowUpDown} value={sort} options={SORTS} onChange={v => setParams({ sort: v })} />
       {hasFilter && <button className="text-button reset" onClick={() => { setInput(''); setSp({}, { replace: true }) }}><X size={13} /> Atur ulang</button>}
       <span className="results-count">{loading ? 'Memuat…' : `${items.length} judul${res.totalRecord ? ` dari ${res.totalRecord}` : ''}`}</span>

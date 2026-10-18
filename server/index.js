@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { registerUser, loginUser, authUser, getUserData, saveUserData, updateProfile } from './auth.js'
 import { uploadAvatar, removeAvatar } from './profile.js'
+import { KINDS, createCatalog } from './catalog.js'
 import { UPLOAD_DIR, EMOJIS, listComments, postComment, deleteComment, reportComment, react, uploadImage, admin } from './comments.js'
 
 const app = express()
@@ -25,6 +26,8 @@ async function upstream(p) {
   if (!response.ok) throw new Error(`Upstream API returned ${response.status}`)
   try { return JSON.parse(body) } catch { throw new Error('Upstream did not return valid JSON') }
 }
+const catalog = createCatalog(upstream)
+catalog.get().catch(() => {})   // hangatkan cache saat server menyala supaya halaman pertama cepat
 const num = (v, d, max = 100) => Math.min(max, Math.max(1, Math.floor(Number(v)) || d))
 const wrap = fn => async (req, res) => {
   try { res.json(await fn(req)) }
@@ -64,12 +67,20 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'JelanWha AP
 // Daftar umum: cari (q), urut (sort), genre (id), halaman.
 app.get('/api/list', wrap(req => {
   const { q, sort, genre } = req.query
+  // Per jenis (manhwa/manhua/manga): disaring dari katalog lengkap di server.
+  const type = KINDS.includes(String(req.query.type)) ? String(req.query.type) : ''
+  if (type) return catalog.list({ type, q, sort: sort || 'latest', genre, page: num(req.query.page, 1, 9999), size: num(req.query.page_size, 24) })
   const params = [`page=${num(req.query.page, 1, 9999)}`, `page_size=${num(req.query.page_size, 24)}`]
   if (q) params.push(`q=${encodeURIComponent(q)}`)
   if (sort) params.push(`sort=${encodeURIComponent(sort)}`)
   if (genre) params.push(`genre_include=${encodeURIComponent(genre)}`)
   return upstream(`/manga/list?${params.join('&')}`)
 }))
+// Halaman utama dalam satu panggilan: banner (ongoing terbaru), populer, dan update terbaru per jenis.
+app.get('/api/home', wrap(async () => ({
+  retcode: 0,
+  data: await catalog.home(async () => { const r = await upstream('/manga/top?filter=daily&page=1&page_size=12'); return Array.isArray(r?.data) ? r.data : (r?.data?.results || []) })
+})))
 // Tetap ada supaya kompatibel dengan versi lama.
 app.get('/api/latest', wrap(req => upstream(`/manga/list?sort=latest&page=${num(req.query.page, 1, 9999)}&page_size=${num(req.query.page_size, 24)}`)))
 app.get('/api/search', wrap(req => upstream(`/manga/list?q=${encodeURIComponent(req.query.q || '')}&page=${num(req.query.page, 1, 9999)}&page_size=${num(req.query.page_size, 24)}`)))

@@ -41,8 +41,13 @@ const qs = obj => Object.entries(obj)
   .filter(([, v]) => v !== '' && v !== undefined && v !== null)
   .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&')
 
-export async function getList({ q = '', sort = '', genre = '', page = 1, pageSize = 24 } = {}) {
-  return parseList(await request(`/api/list?${qs({ q, sort, genre, page, page_size: pageSize })}`), page, pageSize)
+export async function getList({ q = '', sort = '', genre = '', type = '', page = 1, pageSize = 24 } = {}) {
+  return parseList(await request(`/api/list?${qs({ q, sort, genre, type, page, page_size: pageSize })}`), page, pageSize)
+}
+// Isi halaman utama sekali panggil: { banner, popular, latest: { manhwa }, counts }
+export async function getHome() {
+  const d = (await request('/api/home'))?.data || {}
+  return { banner: d.banner || [], popular: d.popular || [], latest: d.latest || {}, counts: d.counts || {} }
 }
 export async function getTop({ page = 1, pageSize = 24, filter = 'daily' } = {}) {
   return parseList(await request(`/api/top?${qs({ filter, page, page_size: pageSize })}`), page, pageSize)
@@ -60,16 +65,37 @@ export async function getChapter(id) {
   return (await request(`/api/chapter/${encodeURIComponent(id)}`))?.data
 }
 
+/* ---------- jenis komik: manhwa (KR), manhua (CN), manga (JP) ---------- */
+export const KINDS = ['manhwa', 'manhua', 'manga']
+export const KIND_LABEL = { manhwa: 'Manhwa', manhua: 'Manhua', manga: 'Manga' }
+const BY_COUNTRY = { KR: 'manhwa', CN: 'manhua', TW: 'manhua', HK: 'manhua', JP: 'manga' }
+const firstOf = v => Array.isArray(v) ? v[0] : v
+export function kindOf(m) {
+  const c = String(firstOf(m?.country_id) ?? firstOf(m?.country) ?? '').toUpperCase()
+  if (BY_COUNTRY[c]) return BY_COUNTRY[c]
+  const fmt = [m?.taxonomy?.Format, m?.format].flat().filter(Boolean).map(x => String(typeof x === 'string' ? x : x?.name).toLowerCase())
+  return KINDS.find(k => fmt.includes(k)) || ''
+}
+
+// Buang label sumber (mis. "[Shinigami]", "shinigami.asia", "- Shinigami") dari judul/sinopsis.
+// Sengaja sempit supaya judul asli yang memang memuat kata "Shinigami" tidak ikut terhapus.
+const BRAND = [/[\[(【]\s*shinigami(?:\s*id)?\s*[\])】]/gi, /\bshinigami\.(?:asia|id|com|net|io)\b/gi, /\s*[-–|·•]\s*shinigami(?:\s*id)?\s*$/gi, /^\s*shinigami(?:\s*id)?\s*[-–|:·•]\s+/gi]
+export const cleanText = s => BRAND.reduce((t, re) => t.replace(re, ' '), String(s ?? '')).replace(/[ \t]{2,}/g, ' ').trim()
+
+const STATUS = { 1: 'Ongoing', 2: 'Completed', 3: 'Hiatus', 4: 'Dropped' }
 export function normalizeManga(m) {
   return {
     id: m?.manga_id || m?.id || '',
-    title: m?.title || 'Tanpa judul',
+    title: cleanText(m?.title) || 'Tanpa judul',
     cover: m?.cover || m?.cover_portrait_url || m?.cover_image_url || m?.cover_url || '',
-    description: m?.description || '',
+    description: cleanText(m?.description),
     rating: Number(m?.user_rate ?? m?.rating ?? 0) || 0,
     genres: (m?.taxonomy?.Genre || m?.genres || []).map(x => typeof x === 'string' ? x : x?.name).filter(Boolean),
     latest: m?.latest_chapter_number || m?.latest || '',
-    status: m?.status === 2 ? 'Completed' : (m?.status === 1 ? 'Ongoing' : (m?.status || 'Ongoing')),
+    updatedAt: Date.parse(m?.latest_chapter_time || '') || 0,
+    kind: kindOf(m),
+    ongoing: m?.status === 1 || /^ongoing$/i.test(String(m?.status ?? '')),
+    status: STATUS[m?.status] || m?.status || 'Ongoing',
     chapters: m?.chapters || []
   }
 }

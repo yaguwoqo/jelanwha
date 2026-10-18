@@ -27,6 +27,14 @@ Backend proxy berjalan di `http://localhost:8787`. Atur `SHNGM_API_BASE` bila in
 - Tidak ada verifikasi email maupun reset kata sandi otomatis (belum ada layanan pengirim email). Kalau ada yang lupa kata sandi, hubungi admin lewat email kontak.
 - Opsional: set `AUTH_SECRET` (teks acak panjang) di `.env`; kalau kosong, server membuat rahasia sendiri di `data/secret.key`.
 
+## Home dan filter Format
+- **Home:** banner berisi manhwa **ongoing yang paling baru update** (bukan yang terpopuler; kalau manhwa ongoing kurang dari 3, diisi ongoing jenis lain), lalu rak **Lagi populer**, rak **Manhwa terbaru**, dan grid **Semua update** dengan tombol muat lebih banyak.
+- **Explore:** ada pilihan **Format** di samping Genre: Semua format / Manhwa / Manhua / Manga. Bisa digabung dengan genre, urutan, dan pencarian. Alamat `?type=manhwa` juga bisa dipakai langsung.
+- Jenis ditentukan dari kode negara judul: KR = manhwa, CN = manhua, JP = manga. Judul tanpa data negara tidak muncul saat Format dipilih.
+- Kartu punya label jenis kecil di pojok poster dan waktu update chapter. Poster ditampilkan apa adanya (tidak dipotong).
+- Label sumber di teks judul/sinopsis (mis. `[Shinigami]`, `shinigami.asia`, `- Shinigami`) otomatis dibuang. Judul asli yang memang memuat kata "Shinigami" tidak diubah.
+- Teknis: server mengambil katalog lengkap (±1000 judul), menyimpannya di memori 5 menit (data lama tetap dipakai kalau API sumber sedang mati), lalu menyaring per jenis. Endpoint: `GET /api/home` dan `GET /api/list?type=manhwa|manhua|manga` (mendukung `q`, `sort`, `genre`, `page`).
+
 ## Edit profil & warna web
 - Menu titik tiga (pojok kanan atas) → **Edit profil** dan **Tampilan & warna**.
 - **Nama tampilan**: bisa diganti kapan saja (2–40 karakter). Nama baru otomatis ikut di semua komentar lamamu. Dikosongkan = nama otomatis "Pembaca xxxx". Email tidak pernah ditampilkan.
