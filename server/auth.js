@@ -1,12 +1,10 @@
-// Akun sederhana tanpa database eksternal: email + kata sandi, disimpan di file JSON.
-// Kata sandi di-hash dengan scrypt, sesi memakai token bertanda tangan HMAC (30 hari).
+// Sesi API bertanda tangan HMAC; identitas pengguna diverifikasi melalui Firebase Authentication.
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
+import { getFirebaseAdminAuth } from './firebaseAdmin.js'
 
-const scrypt = promisify(crypto.scrypt)
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..')
 export const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(ROOT, 'data')
 fs.mkdirSync(DATA_DIR, { recursive: true })
@@ -60,51 +58,51 @@ function readToken(token) {
   } catch { return null }
 }
 
-/* ---------- pembatas percobaan ---------- */
-const tries = new Map()
-function guard(key, max, windowMs) {
-  const now = Date.now()
-  const t = tries.get(key)
-  if (t && t.until > now && t.count >= max) throw new HttpError(429, 'Terlalu banyak percobaan. Coba lagi beberapa menit lagi.')
-  return t && t.until > now ? t : { count: 0, until: now + windowMs }
-}
-const fail = (key, t) => { t.count++; tries.set(key, t) }
-setInterval(() => { const n = Date.now(); for (const [k, v] of tries) if (v.until < n) tries.delete(k) }, 600000).unref()
-
 /* ---------- validasi ---------- */
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 const cleanEmail = v => String(v || '').trim().toLowerCase()
 const publicUser = u => ({ id: u.id, email: u.email, name: u.name || '', avatar: u.avatar || '', theme: u.theme || null, banned: !!u.banned })
-const hash = async (pw, salt) => (await scrypt(String(pw), salt, 64)).toString('hex')
-const DUMMY_SALT = 'jelanwha-dummy-salt'
 
-export async function registerUser(body = {}, ip = '') {
-  const email = cleanEmail(body.email), password = String(body.password || ''), name = String(body.name || '').trim().slice(0, 40)
-  if (!EMAIL_RE.test(email) || email.length > 254) throw new HttpError(400, 'Email tidak valid.')
-  if (password.length < 8) throw new HttpError(400, 'Kata sandi minimal 8 karakter.')
-  if (password.length > 128) throw new HttpError(400, 'Kata sandi terlalu panjang.')
-  const key = `reg|${ip}`
-  const t = guard(key, 10, 3600000)
-  if (emailIndex.has(email)) throw new HttpError(409, 'Email sudah terdaftar. Silakan masuk.')
-  fail(key, t)
-  const salt = crypto.randomBytes(16).toString('hex')
-  const user = { id: crypto.randomUUID(), email, name, salt, hash: await hash(password, salt), createdAt: Date.now(), data: { bookmarks: [], history: [], read: {} } }
-  if (emailIndex.has(email)) throw new HttpError(409, 'Email sudah terdaftar. Silakan masuk.')
-  db.users[user.id] = user
-  emailIndex.set(email, user.id)
-  save()
-  return { token: makeToken(user.id), user: publicUser(user) }
-}
-
-export async function loginUser(body = {}, ip = '') {
-  const email = cleanEmail(body.email), password = String(body.password || '')
-  const key = `login|${ip}|${email}`
-  const t = guard(key, 8, 600000)
-  const user = db.users[emailIndex.get(email)]
-  const computed = await hash(password, user ? user.salt : DUMMY_SALT)
-  const ok = user && crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(user.hash))
-  if (!ok) { fail(key, t); throw new HttpError(401, 'Email atau kata sandi salah. Belum punya akun? Buat akun dengan emailmu.') }
-  tries.delete(key)
+// Firebase ID token diverifikasi server-side. UID Firebase dipetakan ke akun lokal agar
+// komentar, bookmark, moderasi, dan sesi API tetap kompatibel dengan struktur proyek.
+export async function loginFirebase(idToken, profile = {}) {
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT_PATH && !process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    throw new HttpError(503, 'Firebase Admin belum dikonfigurasi. Atur FIREBASE_SERVICE_ACCOUNT_PATH di .env.')
+  }
+  if (typeof idToken !== 'string' || idToken.length > 12000) throw new HttpError(400, 'Token Firebase tidak valid.')
+  let payload
+  try { payload = await getFirebaseAdminAuth().verifyIdToken(idToken) }
+  catch (e) {
+    if (String(e?.message || '').includes('default credentials') || String(e?.message || '').includes('credential') || String(e?.code || '') === 'ENOENT') {
+      throw new HttpError(503, 'Firebase Admin belum dikonfigurasi. Atur FIREBASE_SERVICE_ACCOUNT_PATH di .env.')
+    }
+    throw new HttpError(401, 'Token Firebase tidak valid atau kedaluwarsa. Silakan masuk lagi.')
+  }
+  if (!payload?.uid || !payload.email || payload.email_verified !== true) throw new HttpError(401, 'Akun Google harus memiliki email terverifikasi.')
+  const email = cleanEmail(payload.email)
+  const uid = String(payload.uid)
+  const profileName = cleanName(profile?.name || payload.name || '')
+  let user = Object.values(db.users).find(u => u.firebaseUid === uid)
+  if (!user) {
+    const existingId = emailIndex.get(email)
+    if (existingId) {
+      user = db.users[existingId]
+      user.firebaseUid = uid
+      if (profileName) user.name = profileName
+      if (!user.avatar && payload.picture) user.avatar = String(payload.picture).slice(0, 600)
+    } else {
+      user = {
+        id: crypto.randomUUID(), email, name: profileName,
+        avatar: String(profile?.avatar || payload.picture || '').slice(0, 600), firebaseUid: uid,
+        createdAt: Date.now(), data: { bookmarks: [], history: [], read: {} }
+      }
+      db.users[user.id] = user
+      emailIndex.set(email, user.id)
+    }
+    save()
+  } else if (profileName && user.name !== profileName) {
+    user.name = profileName
+    save()
+  }
   return { token: makeToken(user.id), user: publicUser(user) }
 }
 

@@ -223,7 +223,7 @@ export default function Comments({ chapterId, mangaId, user, openAuth, appealHre
       : user
         ? <Composer chapterId={chapterId} mangaId={mangaId} onBanned={m => { setBanned(true); setBanMsg(m) }}
             onPosted={item => { if (sort === 'new') setItems(l => [item, ...l]); else load(1, true); setTotal(t => t + 1) }} />
-        : <div className="cm-login"><p>Masuk dulu untuk berkomentar, kirim gambar, dan memberi reaksi emoji.</p><button className="primary-button" onClick={() => openAuth('login')}><LogIn size={15} /> Masuk / Buat akun</button></div>}
+        : <div className="cm-login"><p>Masuk dulu untuk berkomentar, kirim gambar, dan memberi reaksi emoji.</p><button className="primary-button" onClick={() => openAuth('login')}><LogIn size={15} /> Masuk dengan Google</button></div>}
 
     {loading ? <div className="cm-loading">{[0, 1, 2].map(i => <div key={i} className="shimmer" />)}</div>
       : error ? <div className="cm-error"><span>{error}</span><button className="text-button" onClick={() => { setLoading(true); load(1, true) }}>Coba lagi</button></div>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { authMe, authLogin, authRegister, fetchUserData, pushUserData, updateProfile, getToken, setToken } from './api'
+import { authMe, authFirebase, fetchUserData, pushUserData, updateProfile, getToken, setToken } from './api'
+import { logoutFirebase } from './firebase'
 import { applyTheme, commitTheme, loadTheme, sameTheme, DEFAULT_THEME } from './theme'
 
 const OWNER_KEY = 'jelanwha-owner'
@@ -35,7 +36,7 @@ export function mergeData(local = {}, remote = {}) {
 export function useAccount({ data, apply, clear }) {
   const [user, setUser] = useState(null)
   const [ready, setReady] = useState(!getToken())
-  const [modal, setModal] = useState(null) // null | 'login' | 'register'
+  const [modal, setModal] = useState(null) // null | 'login'
   const [synced, setSynced] = useState(false)
   const dataRef = useRef(data); dataRef.current = data
   const applyRef = useRef(apply); applyRef.current = apply
@@ -68,8 +69,8 @@ export function useAccount({ data, apply, clear }) {
     return () => clearTimeout(t)
   }, [user, synced, bookmarks, history, read])
 
-  const submit = useCallback(async (mode, form) => {
-    const res = mode === 'register' ? await authRegister(form) : await authLogin(form)
+  const submitGoogle = useCallback(async ({ idToken, profile } = {}) => {
+    const res = await authFirebase(idToken, profile)
     setToken(res.token); setUser(res.user); adoptTheme(res.user)
     try { await syncDown(res.user) } catch {}
     setModal(null)
@@ -79,8 +80,9 @@ export function useAccount({ data, apply, clear }) {
     try { if (synced) await pushUserData(dataRef.current) } catch {}
     setToken(''); setUser(null); setSynced(false)
     try { localStorage.removeItem(OWNER_KEY) } catch {}
+    try { await logoutFirebase() } catch {}
     clearRef.current()
   }, [synced])
 
-  return { user, setUser, ready, modal, synced, openAuth: (m = 'login') => setModal(m), closeAuth: () => setModal(null), setModal, submit, logout }
+  return { user, setUser, ready, modal, synced, openAuth: () => setModal('login'), closeAuth: () => setModal(null), setModal, submitGoogle, logout }
 }

@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { X, Camera, Trash2, Check, RotateCcw, Loader2, UserPlus, LogIn, ZoomIn } from 'lucide-react'
+import { X, Camera, Trash2, Check, RotateCcw, Loader2, LogIn, ZoomIn } from 'lucide-react'
 import { updateProfile, uploadAvatar, removeAvatar } from '../api'
+import { saveFirestoreProfile } from '../firebase'
 import { ACCENTS, BGS, DEFAULT_THEME, applyTheme, cleanTheme, commitTheme, loadTheme, sameTheme } from '../theme'
 import Avatar from './Avatar'
 
@@ -74,8 +75,7 @@ function ProfileTab({ user, onUser, openAuth, onClose }) {
   if (!user) return <div className="st-guest">
     <p>Masuk dulu untuk mengatur nama dan foto profilmu. Nama dan foto ini tampil di komentar.</p>
     <div className="guest-actions">
-      <button className="primary-button small" onClick={() => { onClose(); openAuth('register') }}><UserPlus size={14} /> Buat akun</button>
-      <button className="outline-button small" onClick={() => { onClose(); openAuth('login') }}><LogIn size={14} /> Masuk</button>
+      <button className="primary-button small" onClick={() => { onClose(); openAuth('login') }}><LogIn size={14} /> Masuk dengan Google</button>
     </div>
   </div>
 
@@ -91,7 +91,7 @@ function ProfileTab({ user, onUser, openAuth, onClose }) {
     const n = name.replace(/\s+/g, ' ').trim()
     if (n && n.length < 2) return setMsg({ ok: false, text: 'Nama minimal 2 karakter.' })
     setBusy('name'); setMsg(null)
-    try { const r = await updateProfile({ name: n }); onUser(r.user); setName(r.user.name || ''); setMsg({ ok: true, text: 'Nama tersimpan.' }) }
+    try { await saveFirestoreProfile({ name: n }); const r = await updateProfile({ name: n }); onUser(r.user); setName(r.user.name || ''); setMsg({ ok: true, text: 'Nama tersimpan di profil dan Cloud Firestore.' }) }
     catch (err) { setMsg({ ok: false, text: err.message || 'Gagal menyimpan nama.' }) }
     finally { setBusy('') }
   }

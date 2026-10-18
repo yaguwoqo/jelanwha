@@ -151,7 +151,7 @@ function App() {
     {!isReader && <footer className="footer"><span className="brand small"><span className="brand-mark">J</span>Jelan<span className="brand-accent">Wha</span></span><span className="footer-links"><a href={WA_CHANNEL} target="_blank" rel="noopener noreferrer"><MessageCircle size={14} /> Saluran WhatsApp</a><a href={reportMail()}><Mail size={14} /> {CONTACT_EMAIL}</a></span></footer>}
     {!isReader && <nav className="bottom-nav">{nav.map(n => <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `bottom-link ${isActive ? 'selected' : ''}`}><n.icon size={20} /><span>{n.label}</span></NavLink>)}</nav>}
   {settings && <SettingsModal tab={settings} setTab={setSettings} user={account.user} onUser={account.setUser} onClose={() => setSettings(null)} openAuth={account.openAuth} />}
-  {account.modal && <AuthModal mode={account.modal} setMode={account.setModal} onClose={account.closeAuth} onSubmit={account.submit} />}
+  {account.modal && <AuthModal onClose={account.closeAuth} onGoogle={account.submitGoogle} />}
   </div></AuthCtx.Provider></Lib.Provider>
 }
 

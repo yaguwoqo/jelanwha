@@ -20,11 +20,10 @@ Backend proxy berjalan di `http://localhost:8787`. Atur `SHNGM_API_BASE` bila in
 - Home: banner gambar besar menyatu dengan judul, rak manhwa yang bisa digeser, lalu grid "Semua manhwa" dengan tombol muat lebih banyak.
 - Riwayat menampilkan cover, chapter terakhir, dan tombol Lanjutkan.
 
-## Akun (login dengan email)
-- Menu titik tiga di pojok kanan atas → **Buat akun** atau **Masuk**. Login bersifat opsional: tanpa akun tetap bisa membaca, tapi bookmark/riwayat hanya tersimpan di perangkat itu.
+## Akun (Google saja)
+- Menu titik tiga di pojok kanan atas → **Masuk dengan Google** (setelah konfigurasi). Metode daftar/login email dan kata sandi telah dihapus. Login bersifat opsional: tanpa akun tetap bisa membaca, tapi bookmark/riwayat hanya tersimpan di perangkat itu.
 - Setelah masuk, bookmark, riwayat, dan chapter yang sudah dibaca otomatis tersinkron ke akun dan bisa dibuka di perangkat lain.
-- Akun disimpan di file `data/db.json` (kata sandi di-hash dengan scrypt, tidak disimpan polos). Folder `data/` dibuat otomatis oleh server — jangan dihapus kalau ingin akunnya tetap ada, dan jangan dibagikan.
-- Tidak ada verifikasi email maupun reset kata sandi otomatis (belum ada layanan pengirim email). Kalau ada yang lupa kata sandi, hubungi admin lewat email kontak.
+- Data aplikasi lokal (misalnya bookmark, riwayat, komentar, dan tema) tetap dikelola backend. Identitas login diverifikasi menggunakan Firebase Authentication; data profil tampilan juga disimpan di Cloud Firestore.
 - Opsional: set `AUTH_SECRET` (teks acak panjang) di `.env`; kalau kosong, server membuat rahasia sendiri di `data/secret.key`.
 
 ## Home dan filter Format
@@ -88,3 +87,55 @@ npm run build
 npm start
 ```
 Untuk deploy produksi, frontend hasil build perlu disajikan oleh hosting statis dan backend Node dijalankan pada server yang sama atau diatur melalui reverse proxy. Endpoint gambar eksternal bisa gagal jika upstream memblokir akses browser.
+
+
+## Login Google dengan Firebase Authentication + Cloud Firestore
+
+### 1. Aktifkan Google provider
+1. Buka https://console.firebase.google.com/ dan pilih proyek Firebase.
+2. Buka **Authentication → Sign-in method** lalu aktifkan **Google**.
+3. Di **Project settings → Your apps**, daftarkan/pilih aplikasi Web dan salin konfigurasi web Firebase.
+4. Pada Authentication settings, pastikan domain yang digunakan (`localhost` untuk pengujian lokal dan domain produksi) ada di daftar **Authorized domains**.
+
+### 2. Konfigurasi `.env`
+Salin `.env.example` menjadi `.env`, lalu isi variabel `VITE_FIREBASE_*` dari konfigurasi aplikasi web Firebase. Variabel `FIREBASE_PROJECT_ID` harus cocok dengan project ID tersebut.
+
+### 3. Siapkan Firebase Admin SDK untuk backend
+Backend harus memverifikasi Firebase ID token; jangan mengandalkan data profil atau token yang dikirim browser tanpa verifikasi.
+1. Firebase Console → **Project settings → Service accounts** → **Generate new private key**.
+2. Simpan JSON service account di folder privat yang tidak ikut dibagikan/diunggah. Jangan taruh isi file itu ke kode frontend atau Git.
+3. Atur `FIREBASE_SERVICE_ACCOUNT_PATH` di `.env` ke path absolut file JSON tersebut. Contoh Termux: `/data/data/com.termux/files/home/.config/jelanwha/firebase-admin.json`. Pastikan folder tujuan sudah dibuat dan file disalin ke sana.
+4. Jangan pernah memasukkan service account JSON ke ZIP yang dibagikan. Jika file tersebut pernah terpublikasi, cabut/rotasi kredensialnya.
+
+### 4. Aturan keamanan Cloud Firestore
+Buat koleksi `profiles`; dokumen setiap pengguna menggunakan Firebase UID sebagai ID dokumen. Aturan minimal yang sesuai dengan fitur ini:
+
+```text
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /profiles/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 40;
+      allow delete: if false;
+    }
+  }
+}
+```
+
+Aturan ini membatasi pengguna hanya mengakses dokumen profil miliknya. Jika nanti aplikasi menambahkan profil publik, buat aturan baca publik secara sengaja setelah menentukan data apa yang aman ditampilkan.
+
+### 5. Instal dan jalankan
+
+```bash
+npm install
+npm run dev
+```
+
+Buka `http://localhost:5173`. Login Google akan membuka pemilih akun Google melalui Firebase. Nama yang diubah di **Menu akun → Edit profil** disimpan ke Cloud Firestore dan disinkronkan ke backend agar nama yang muncul di komentar juga ikut berubah.
+
+Catatan: backend masih memakai database lokal untuk data aplikasi lain (misalnya bookmark/riwayat, komentar, tema, dan moderasi). Firebase Authentication menangani identitas login dan Firestore menyimpan profil. Gunakan penyimpanan persisten untuk folder `data/` jika deploy ke server produksi.

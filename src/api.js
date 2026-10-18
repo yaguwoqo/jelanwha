@@ -101,8 +101,6 @@ export function normalizeManga(m) {
 }
 
 /* ---------- akun ---------- */
-export const authRegister = ({ email, password, name }) => request('/api/auth/register', { method: 'POST', body: { email, password, name } })
-export const authLogin = ({ email, password }) => request('/api/auth/login', { method: 'POST', body: { email, password } })
 export const authMe = () => request('/api/auth/me')
 export const fetchUserData = () => request('/api/user/data')
 export const pushUserData = data => request('/api/user/data', { method: 'PUT', body: data })
@@ -119,3 +117,6 @@ export const uploadImage = blob => request('/api/upload', { method: 'POST', raw:
 export const updateProfile = body => request('/api/profile', { method: 'PUT', body })
 export const uploadAvatar = blob => request('/api/profile/avatar', { method: 'POST', raw: blob })
 export const removeAvatar = () => request('/api/profile/avatar', { method: 'DELETE' })
+
+// Firebase ID token diverifikasi ulang di backend menggunakan Firebase Admin SDK.
+export const authFirebase = (idToken, profile = {}) => request('/api/auth/firebase', { method: 'POST', body: { idToken, profile } })

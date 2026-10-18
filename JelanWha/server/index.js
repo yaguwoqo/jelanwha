@@ -1,9 +1,10 @@
+import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { registerUser, loginUser, authUser, getUserData, saveUserData, updateProfile } from './auth.js'
+import { loginFirebase, authUser, getUserData, saveUserData, updateProfile } from './auth.js'
 import { uploadAvatar, removeAvatar } from './profile.js'
 import { KINDS, createCatalog } from './catalog.js'
 import { UPLOAD_DIR, EMOJIS, listComments, postComment, deleteComment, reportComment, react, uploadImage, admin } from './comments.js'
@@ -34,9 +35,8 @@ const wrap = fn => async (req, res) => {
   catch (e) { res.status(e.status || 502).json({ retcode: -1, message: e.message, code: e.code }) }
 }
 
-// Akun (email + kata sandi) dan sinkronisasi bookmark/riwayat
-app.post('/api/auth/register', wrap(req => registerUser(req.body, req.ip)))
-app.post('/api/auth/login', wrap(req => loginUser(req.body, req.ip)))
+// Autentikasi hanya melalui Google melalui Firebase Authentication
+app.post('/api/auth/firebase', wrap(req => loginFirebase(req.body?.idToken, req.body?.profile || {})))
 app.get('/api/auth/me', wrap(req => ({ user: authUser(req) })))
 app.get('/api/user/data', wrap(req => getUserData(authUser(req).id)))
 app.put('/api/user/data', wrap(req => saveUserData(authUser(req).id, req.body)))
