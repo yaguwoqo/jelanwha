@@ -3,3 +3,9 @@ dist
 .env
 .DS_Store
 data
+.env
+.env.*
+!.env.example
+*.json
+node_modules/
+dist/
